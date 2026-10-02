@@ -22,7 +22,9 @@ public class ServiceResult
 
 /// <summary>
 /// Encapsulates the outcome of a business layer operation returning a value.
+/// Where 'T' is a generic type parameter representing the payload or entity type returned upon success (e.g. Student).
 /// </summary>
+/// <typeparam name="T">The generic type of the data payload returned by the business operation (e.g. <see cref="Student"/>).</typeparam>
 public class ServiceResult<T> : ServiceResult
 {
     public T? Data { get; }

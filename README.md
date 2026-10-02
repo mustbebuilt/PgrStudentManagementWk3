@@ -56,18 +56,22 @@ In Week 3, the application has been refactored into a **3-Tier Layered Architect
 
 The business layer implements the **Result Pattern** via [`ServiceResult`](file:///Users/martincooper/Documents/learning%20materials/sad-2026/PgrStudentManagementWk3/PgrStudentManagement.Web/Services/ServiceResult.cs) and [`ServiceResult<T>`](file:///Users/martincooper/Documents/learning%20materials/sad-2026/PgrStudentManagementWk3/PgrStudentManagement.Web/Services/ServiceResult.cs#L26) to communicate operational outcomes explicitly without relying on expensive exception handling for predictable validation errors.
 
-| Feature / Aspect | `ServiceResult` (Non-Generic) | `ServiceResult<T>` (Generic) |
+In `ServiceResult<T>`, **`T` is a C# generic type parameter** representing the type of data or domain entity returned by the operation upon success (for example, `ServiceResult<Student>` where `T` is `Student`). Generics allow `ServiceResult<T>` to be reusable across any domain model or DTO while preserving strict compile-time type safety.
+
+| Feature / Aspect | `ServiceResult` (Non-Generic) | `ServiceResult<T>` (Generic with Type Parameter `T`) |
 |---|---|---|
 | **Purpose** | Used for **void / state-mutation operations** (commands) where no data entity needs to be returned to the caller upon success. | Used for **creation or data-producing operations** (queries/factories) where the caller requires the resulting payload `T` upon success. |
-| **Payload** | Contains no data payload. Only provides `Success` (`bool`), `ErrorMessage` (`string?`), and `ErrorCode` (`string?`). | Inherits `Success`, `ErrorMessage`, and `ErrorCode`, and adds a strongly-typed `Data` property of type `T?`. |
-| **Success Factory** | `ServiceResult.Ok()` | `ServiceResult<T>.Ok(data)` |
+| **Generic Type Parameter `T`** | N/A (non-generic). | `T` defines the payload type (e.g. `Student`, `List<Student>`, `StatisticsViewModel`). |
+| **Payload** | Contains no data payload. Only provides `Success` (`bool`), `ErrorMessage` (`string?`), and `ErrorCode` (`string?`). | Inherits `Success`, `ErrorMessage`, and `ErrorCode`, and adds a strongly-typed `Data` property of generic type `T?`. |
+| **Success Factory** | `ServiceResult.Ok()` | `ServiceResult<T>.Ok(data)` (where `data` must match type `T`). |
 | **Failure Factory** | `ServiceResult.Fail(message, code)` | `ServiceResult<T>.Fail(message, code)` |
-| **Example Use Cases in Application** | • `UpdateStatus(studentNumber, status)`<br/>• `UpdateExpectedSubmissionDate(studentNumber, date)`<br/>• `RecordSubmission(studentNumber, actualDate)` | • `CreateStudent(student)` (returns `ServiceResult<Student>` so the controller receives the newly created and initialized student record). |
+| **Example Use Cases in Application** | • `UpdateStatus(studentNumber, status)`<br/>• `UpdateExpectedSubmissionDate(studentNumber, date)`<br/>• `RecordSubmission(studentNumber, actualDate)` | • `CreateStudent(student)` (returns `ServiceResult<Student>` where `T = Student`, allowing the controller to receive the initialized student record). |
 
-**Key Differences & Benefits**:
-1. **Separation of Void vs Value Operations**: `ServiceResult` communicates purely *status* (success vs failure reason), whereas `ServiceResult<T>` carries both the *status* and the *resulting entity* (`Data`).
-2. **Type Safety**: When an operation succeeds with `ServiceResult<T>`, the caller (`StudentsController`) can safely access `result.Data` (such as `result.Data.StudentNumber`) without unsafe casting.
-3. **Consistent Error Handling**: Both types share identical error semantics (`ErrorMessage` and machine-readable `ErrorCode`), allowing the presentation layer to map specific validation errors directly to ASP.NET Core `ModelState` keys (e.g. `DuplicateStudentNumber` mapped to `ModelState.AddModelError("StudentNumber", ...)`).
+**Key Differences & Benefits of Generic Type `T`**:
+1. **Compile-Time Type Safety**: Because `T` is a generic type parameter, the compiler enforces that `result.Data` matches the expected type (e.g., `Student`), preventing runtime type cast exceptions (`InvalidCastException`) or boxing/unboxing overhead.
+2. **Reusability Across Domains**: The generic pattern allows the same result wrapper to be used for any entity or DTO type across current and future services (e.g., `ServiceResult<Student>`, `ServiceResult<ThesisMilestone>`, `ServiceResult<Supervisor>`).
+3. **Separation of Void vs Value Operations**: `ServiceResult` communicates purely *status* (success vs failure reason), whereas `ServiceResult<T>` carries both the *status* and the *generic payload entity* (`Data`).
+4. **Consistent Error Handling**: Both generic and non-generic variants share identical error semantics (`ErrorMessage` and machine-readable `ErrorCode`), allowing the presentation layer to map specific validation errors directly to ASP.NET Core `ModelState` keys (e.g. `DuplicateStudentNumber` mapped to `ModelState.AddModelError("StudentNumber", ...)`).
 
 ### 2.3 Data Layer (`PgrStudentManagement.Web/Data`)
 - **Components**: `StudentStorage`.
@@ -81,7 +85,9 @@ The business layer implements the **Result Pattern** via [`ServiceResult`](file:
 
 ---
 
-## 3. Dependency Injection Configuration (`Program.cs`)
+## 3. Dependency Injection Configuration & Service Lifetimes (`Program.cs`)
+
+ASP.NET Core uses a built-in Inversion of Control (IoC) container to manage object creation and lifecycles. In `Program.cs`, the data and business layers are registered with specific service lifetimes:
 
 ```csharp
 // Program.cs
@@ -89,9 +95,50 @@ builder.Services.AddSingleton<StudentStorage>(); // Data layer: single in-memory
 builder.Services.AddScoped<StudentService>();    // Business layer: created per request
 ```
 
-- **`StudentStorage` (Singleton)**: Maintains the in-memory collection across all web requests during application execution.
-- **`StudentService` (Scoped)**: Instantiated per HTTP request, receiving the singleton `StudentStorage` via constructor injection.
-- **`StudentsController`**: Receives `StudentService` via constructor injection.
+### 3.1 Why `StudentStorage` is Registered as `Singleton`
+
+- **Lifetime**: A **Singleton** service is created the first time it is requested (or at application startup) and remains alive for the entire duration of the application process. Exactly **one instance** is shared across all HTTP requests and all users.
+- **Architectural Rationale**:
+  - `StudentStorage` encapsulates an in-memory collection (`List<Student>`).
+  - If `StudentStorage` were registered as `Transient` or `Scoped`, a fresh instance containing only the initial seed records would be created for every single web request. Any newly created students or modifications (e.g. status changes, thesis submission dates) would immediately vanish as soon as the HTTP request finished.
+  - Using `Singleton` guarantees that all controllers and services interact with the exact same in-memory state across multiple requests and concurrent user sessions.
+
+### 3.2 Why `StudentService` is Registered as `Scoped`
+
+- **Lifetime**: A **Scoped** service is created **once per HTTP request** (within the request's scope) and is disposed at the end of that request. All components resolved during the same request receive the same instance.
+- **Architectural Rationale**:
+  - **Request Isolation**: Business operations often hold temporary, request-specific state (e.g. execution context, cached user info, or transaction units). Scoped lifetime prevents state from leaking across different user requests.
+  - **Forward Compatibility with Entity Framework Core**: In real-world enterprise architectures, database contexts (like EF Core `DbContext`) are registered as `Scoped`. Registering business services as `Scoped` ensures they can seamlessly depend on `DbContext` without architectural refactoring.
+  - **Captive Dependency Prevention**: In ASP.NET Core, a longer-lived service (Singleton) must **never** inject a shorter-lived service (Scoped) — this anti-pattern is known as a *captive dependency*. However, a shorter-lived service (Scoped `StudentService`) safely injecting a longer-lived service (Singleton `StudentStorage`) is completely valid and recommended.
+
+### 3.3 Service Lifetime Comparison Matrix
+
+| Lifetime | Registration Method | Instantiation Frequency | Disposal Point | Use in This Application |
+|---|---|---|---|---|
+| **Transient** | `AddTransient<T>()` | Every single time requested | End of request / GC | Lightweight, stateless utilities |
+| **Scoped** | `AddScoped<T>()` | Once per incoming HTTP request | End of the HTTP request | **`StudentService`** (coordinates request-level business workflows) |
+| **Singleton** | `AddSingleton<T>()` | Once per application process lifetime | Application shutdown | **`StudentStorage`** (preserves in-memory state across requests) |
+
+### 3.4 Dependency Flow & Injection Chain
+
+```
+[ Incoming HTTP Request ]
+          │
+          ▼
+┌─────────────────────────────────┐
+│       StudentsController        │  (Created per request by MVC framework)
+└────────────────┬────────────────┘
+                 │ (Constructor Injection)
+                 ▼
+┌─────────────────────────────────┐
+│     StudentService (Scoped)     │  (Instantiated once for this HTTP request)
+└────────────────┬────────────────┘
+                 │ (Constructor Injection)
+                 ▼
+┌─────────────────────────────────┐
+│    StudentStorage (Singleton)   │  (Single shared instance across all requests)
+└─────────────────────────────────┘
+```
 
 ---
 
