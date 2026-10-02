@@ -52,6 +52,23 @@ In Week 3, the application has been refactored into a **3-Tier Layered Architect
   - The service is decoupled from ASP.NET Core MVC controllers, `IActionResult`, and HTTP context.
   - Receives `StudentStorage` via constructor dependency injection.
 
+#### 2.2.1 Result Pattern: `ServiceResult` vs `ServiceResult<T>`
+
+The business layer implements the **Result Pattern** via [`ServiceResult`](file:///Users/martincooper/Documents/learning%20materials/sad-2026/PgrStudentManagementWk3/PgrStudentManagement.Web/Services/ServiceResult.cs) and [`ServiceResult<T>`](file:///Users/martincooper/Documents/learning%20materials/sad-2026/PgrStudentManagementWk3/PgrStudentManagement.Web/Services/ServiceResult.cs#L26) to communicate operational outcomes explicitly without relying on expensive exception handling for predictable validation errors.
+
+| Feature / Aspect | `ServiceResult` (Non-Generic) | `ServiceResult<T>` (Generic) |
+|---|---|---|
+| **Purpose** | Used for **void / state-mutation operations** (commands) where no data entity needs to be returned to the caller upon success. | Used for **creation or data-producing operations** (queries/factories) where the caller requires the resulting payload `T` upon success. |
+| **Payload** | Contains no data payload. Only provides `Success` (`bool`), `ErrorMessage` (`string?`), and `ErrorCode` (`string?`). | Inherits `Success`, `ErrorMessage`, and `ErrorCode`, and adds a strongly-typed `Data` property of type `T?`. |
+| **Success Factory** | `ServiceResult.Ok()` | `ServiceResult<T>.Ok(data)` |
+| **Failure Factory** | `ServiceResult.Fail(message, code)` | `ServiceResult<T>.Fail(message, code)` |
+| **Example Use Cases in Application** | • `UpdateStatus(studentNumber, status)`<br/>• `UpdateExpectedSubmissionDate(studentNumber, date)`<br/>• `RecordSubmission(studentNumber, actualDate)` | • `CreateStudent(student)` (returns `ServiceResult<Student>` so the controller receives the newly created and initialized student record). |
+
+**Key Differences & Benefits**:
+1. **Separation of Void vs Value Operations**: `ServiceResult` communicates purely *status* (success vs failure reason), whereas `ServiceResult<T>` carries both the *status* and the *resulting entity* (`Data`).
+2. **Type Safety**: When an operation succeeds with `ServiceResult<T>`, the caller (`StudentsController`) can safely access `result.Data` (such as `result.Data.StudentNumber`) without unsafe casting.
+3. **Consistent Error Handling**: Both types share identical error semantics (`ErrorMessage` and machine-readable `ErrorCode`), allowing the presentation layer to map specific validation errors directly to ASP.NET Core `ModelState` keys (e.g. `DuplicateStudentNumber` mapped to `ModelState.AddModelError("StudentNumber", ...)`).
+
 ### 2.3 Data Layer (`PgrStudentManagement.Web/Data`)
 - **Components**: `StudentStorage`.
 - **Responsibilities**:
@@ -193,6 +210,12 @@ classDiagram
         +Fail(string errorMessage, string errorCode) ServiceResult
     }
 
+    class ServiceResult~T~ {
+        +T? Data
+        +Ok(T data) ServiceResult~T~
+        +Fail(string errorMessage, string errorCode) ServiceResult~T~
+    }
+
     class StudentStatisticsViewModel {
         +int TotalStudents
         +Dictionary~Status, int~ StatusDistribution
@@ -206,9 +229,11 @@ classDiagram
         +bool HasData
     }
 
+    ServiceResult <|-- ServiceResult~T~ : inherits
     StudentsController --> StudentService : invokes
     StudentService --> StudentStorage : invokes
     StudentService --> ServiceResult : returns
+    StudentService --> ServiceResult~T~ : returns
     StudentService --> StudentStatisticsViewModel : creates
     StudentStorage --> Student : owns
     Student --> Status : has
