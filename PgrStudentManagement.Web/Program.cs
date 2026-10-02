@@ -1,7 +1,14 @@
+using PgrStudentManagement.Web.Data;
+using PgrStudentManagement.Web.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
+
+// Register Layered Architecture Dependencies
+builder.Services.AddSingleton<StudentStorage>();
+builder.Services.AddScoped<StudentService>();
 
 var app = builder.Build();
 

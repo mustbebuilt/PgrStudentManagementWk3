@@ -1,0 +1,138 @@
+@model PgrStudentManagement.Web.Models.Student
+
+@{
+    ViewData["Title"] = $"Student Details - {Model.FullName}";
+}
+
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a asp-action="Index">Students</a></li>
+            <li class="breadcrumb-item active" aria-current="page">@Model.StudentNumber</li>
+        </ol>
+    </nav>
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <strong>Success!</strong> @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-3">
+            <div>
+                <h1 class="h3 mb-0">@Model.FullName</h1>
+                <span class="badge bg-secondary">@Model.StudentNumber</span>
+            </div>
+            <span class="badge fs-6 @(Model.Status switch {
+                PgrStudentManagement.Web.Models.Status.Researching => "bg-primary",
+                PgrStudentManagement.Web.Models.Status.WritingUp => "bg-info text-dark",
+                PgrStudentManagement.Web.Models.Status.Submitted => "bg-success",
+                PgrStudentManagement.Web.Models.Status.Corrections => "bg-warning text-dark",
+                PgrStudentManagement.Web.Models.Status.Completed => "bg-light text-dark",
+                PgrStudentManagement.Web.Models.Status.Suspended => "bg-secondary",
+                PgrStudentManagement.Web.Models.Status.Withdrawn => "bg-danger",
+                _ => "bg-light text-dark"
+            })">
+                @Model.Status
+            </span>
+        </div>
+
+        <div class="card-body p-4">
+            <div class="row g-4">
+                <!-- Enrolment Details Section -->
+                <div class="col-md-6 border-end">
+                    <h5 class="text-primary border-bottom pb-2 mb-3">Enrolment Profile (W2-UC01 / W3-UC03)</h5>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-5 text-muted">Student Number:</dt>
+                        <dd class="col-sm-7 fw-semibold">@Model.StudentNumber</dd>
+
+                        <dt class="col-sm-5 text-muted">First Name:</dt>
+                        <dd class="col-sm-7">@Model.FirstName</dd>
+
+                        <dt class="col-sm-5 text-muted">Last Name:</dt>
+                        <dd class="col-sm-7">@Model.LastName</dd>
+
+                        <dt class="col-sm-5 text-muted">Programme / Course:</dt>
+                        <dd class="col-sm-7">@(Model.Course ?? "Not specified")</dd>
+
+                        <dt class="col-sm-5 text-muted">Mode of Study:</dt>
+                        <dd class="col-sm-7">@(Model.ModeOfStudy ?? "Not specified")</dd>
+
+                        <dt class="col-sm-5 text-muted">Enrolment Start Date:</dt>
+                        <dd class="col-sm-7">@(Model.StartDate?.ToString("yyyy-MM-dd") ?? "Not recorded")</dd>
+
+                        <dt class="col-sm-5 text-muted">Current Status:</dt>
+                        <dd class="col-sm-7"><span class="fw-bold">@Model.Status</span></dd>
+                    </dl>
+                    <div class="mt-3">
+                        <a asp-action="EditStatus" asp-route-studentNumber="@Model.StudentNumber" class="btn btn-outline-primary btn-sm">
+                            Update Status (W2-UC03)
+                        </a>
+                        <a asp-action="EnrolmentDetails" asp-route-studentNumber="@Model.StudentNumber" class="btn btn-link btn-sm text-decoration-none">
+                            View Enrolment Card
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Thesis Details Section -->
+                <div class="col-md-6">
+                    <h5 class="text-primary border-bottom pb-2 mb-3">Thesis & Milestones (W2-UC02 / W3-UC03)</h5>
+                    @if (!Model.HasThesisInformation)
+                    {
+                        <div class="alert alert-info py-2" role="alert">
+                            <em>Thesis information not available.</em>
+                        </div>
+                    }
+
+                    <dl class="row mb-0">
+                        <dt class="col-sm-6 text-muted">Thesis Title:</dt>
+                        <dd class="col-sm-6">@(Model.ThesisTitle ?? "Not recorded")</dd>
+
+                        <dt class="col-sm-6 text-muted">Expected Submission Date:</dt>
+                        <dd class="col-sm-6">@(Model.ExpectedSubmissionDate?.ToString("yyyy-MM-dd") ?? "Not set")</dd>
+
+                        <dt class="col-sm-6 text-muted">Original Target Date:</dt>
+                        <dd class="col-sm-6">@(Model.OriginalExpectedSubmissionDate?.ToString("yyyy-MM-dd") ?? "Not set")</dd>
+
+                        <dt class="col-sm-6 text-muted">Actual Submission Date:</dt>
+                        <dd class="col-sm-6">
+                            @if (Model.ActualSubmissionDate.HasValue)
+                            {
+                                <span class="badge bg-success">@Model.ActualSubmissionDate.Value.ToString("yyyy-MM-dd")</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">Not yet submitted</span>
+                            }
+                        </dd>
+                    </dl>
+                    <div class="mt-3 d-flex gap-2 flex-wrap">
+                        <a asp-action="EditExpectedSubmissionDate" asp-route-studentNumber="@Model.StudentNumber" class="btn btn-outline-warning btn-sm">
+                            Edit Expected Date (W2-UC04)
+                        </a>
+                        <a asp-action="RecordSubmission" asp-route-studentNumber="@Model.StudentNumber" class="btn btn-outline-success btn-sm">
+                            Record Submission (W2-UC05)
+                        </a>
+                        <a asp-action="ThesisDetails" asp-route-studentNumber="@Model.StudentNumber" class="btn btn-link btn-sm text-decoration-none">
+                            View Thesis Card
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-footer bg-light d-flex justify-content-between py-3">
+            <a asp-action="Index" class="btn btn-secondary">
+                &larr; Back to Student List
+            </a>
+            <div>
+                <a asp-action="Search" class="btn btn-outline-dark">
+                    Search Students
+                </a>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,164 @@
+@model PgrStudentManagement.Web.Models.StudentStatisticsViewModel
+
+@{
+    ViewData["Title"] = "Student Statistics";
+}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 mb-1">PGR Cohort Statistics</h1>
+            <p class="text-muted mb-0">W3-UC05: Aggregated cohort metrics, status distribution, and submission analytics.</p>
+        </div>
+        <div>
+            <a asp-action="Index" class="btn btn-outline-secondary">
+                &larr; Back to Student List
+            </a>
+        </div>
+    </div>
+
+    @if (!Model.HasData)
+    {
+        <div class="alert alert-warning py-4 text-center" role="alert">
+            <h4 class="alert-heading">No student data available</h4>
+            <p class="mb-3">There are currently no student records in the system to generate statistics.</p>
+            <a asp-action="Create" class="btn btn-primary">Create First Student</a>
+        </div>
+    }
+    else
+    {
+        <!-- Summary Cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card bg-primary text-white shadow-sm border-0 h-100">
+                    <div class="card-body">
+                        <h6 class="text-uppercase fw-bold text-white-50 small">Total Students</h6>
+                        <h2 class="display-5 fw-bold mb-0">@Model.TotalStudents</h2>
+                        <small class="text-white-50">Active registered PGRs</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white shadow-sm border-0 h-100">
+                    <div class="card-body">
+                        <h6 class="text-uppercase fw-bold text-white-50 small">Submissions / Completed</h6>
+                        <h2 class="display-5 fw-bold mb-0">@Model.SubmissionsCount</h2>
+                        <small class="text-white-50">@Model.SubmissionRatePercentage% submission rate</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-info text-white shadow-sm border-0 h-100">
+                    <div class="card-body">
+                        <h6 class="text-uppercase fw-bold text-white-50 small">Writing Up</h6>
+                        <h2 class="display-5 fw-bold mb-0">@Model.WritingUpCount</h2>
+                        <small class="text-white-50">Near-completion cohort</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-secondary text-white shadow-sm border-0 h-100">
+                    <div class="card-body">
+                        <h6 class="text-uppercase fw-bold text-white-50 small">Researching</h6>
+                        <h2 class="display-5 fw-bold mb-0">@Model.ResearchingCount</h2>
+                        <small class="text-white-50">Active research stage</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Distributions -->
+        <div class="row g-4">
+            <!-- Status Distribution -->
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="card-title mb-0">Status Breakdown</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-3">Status</th>
+                                        <th class="text-center">Student Count</th>
+                                        <th class="text-end pe-3">Percentage</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var kvp in Model.StatusDistribution.OrderByDescending(k => k.Value))
+                                    {
+                                        var pct = Model.TotalStudents > 0 ? Math.Round((double)kvp.Value / Model.TotalStudents * 100, 1) : 0;
+                                        <tr>
+                                            <td class="ps-3">
+                                                <span class="badge @(kvp.Key switch {
+                                                    PgrStudentManagement.Web.Models.Status.Researching => "bg-primary",
+                                                    PgrStudentManagement.Web.Models.Status.WritingUp => "bg-info text-dark",
+                                                    PgrStudentManagement.Web.Models.Status.Submitted => "bg-success",
+                                                    PgrStudentManagement.Web.Models.Status.Corrections => "bg-warning text-dark",
+                                                    PgrStudentManagement.Web.Models.Status.Completed => "bg-dark",
+                                                    PgrStudentManagement.Web.Models.Status.Suspended => "bg-secondary",
+                                                    PgrStudentManagement.Web.Models.Status.Withdrawn => "bg-danger",
+                                                    _ => "bg-light text-dark"
+                                                })">
+                                                    @kvp.Key
+                                                </span>
+                                            </td>
+                                            <td class="text-center fw-semibold">@kvp.Value</td>
+                                            <td class="text-end pe-3 text-muted">@pct%</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mode of Study & Programme Breakdown -->
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="card-title mb-0">Mode of Study</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <ul class="list-group list-group-flush">
+                            @foreach (var mode in Model.ModeOfStudyDistribution.OrderByDescending(k => k.Value))
+                            {
+                                var pct = Model.TotalStudents > 0 ? Math.Round((double)mode.Value / Model.TotalStudents * 100, 1) : 0;
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span>@mode.Key</span>
+                                    <div>
+                                        <span class="badge bg-primary rounded-pill">@mode.Value</span>
+                                        <span class="text-muted small ms-2">(@pct%)</span>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="card-title mb-0">Research Programmes</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <ul class="list-group list-group-flush">
+                            @foreach (var prog in Model.ProgrammeDistribution.OrderByDescending(k => k.Value))
+                            {
+                                var pct = Model.TotalStudents > 0 ? Math.Round((double)prog.Value / Model.TotalStudents * 100, 1) : 0;
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span>@prog.Key</span>
+                                    <div>
+                                        <span class="badge bg-secondary rounded-pill">@prog.Value</span>
+                                        <span class="text-muted small ms-2">(@pct%)</span>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>

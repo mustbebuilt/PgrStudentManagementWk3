@@ -1,189 +1,397 @@
-# Week 2 Student Management Implementation Documentation
+# Week 3 PGR Student Management: Layered Architecture Documentation
 
-## 1. Overview & Architectural Scope
+## 1. Executive Summary & Architectural Evolution
 
-This document details the design and implementation of the five core Postgraduate Research (PGR) Student Management use cases for Week 2, adhering to the ASP.NET Core MVC pattern.
+In Week 2, the application followed a 2-tier MVC pattern where the controller (`StudentsController`) directly held and mutated a static in-memory student collection. This violated the Single Responsibility Principle and coupled presentation concerns with business rules and data persistence.
 
-### Technical Scope & Constraints
-- **Framework**: ASP.NET Core MVC (.NET 10).
-- **Architecture**: Single web project (`PgrStudentManagement.Web`) with Controllers, Models, and Razor Views.
-- **Data Persistence**: In-memory static collection (`List<Student>`), maintaining simplicity without external database, Entity Framework, or service layer overhead for this iteration.
-- **Testing**: Automated test suite (`PgrStudentManagement.Tests`) using xUnit and Moq.
+In Week 3, the application has been refactored into a **3-Tier Layered Architecture** as specified in `instructions.md`. The design enforces strict separation of concerns, unidirectional dependencies, and inversion of control via ASP.NET Core Dependency Injection.
 
----
-
-## 2. Domain Model Refinement & Design Decisions
-
-From the candidate domain model provided in `LabResources/week02-domain-model-student-lab.md`, the necessary fields were selected to support the Week 2 use cases:
-
-### Selected Student Attributes (`Student.cs`)
-| Property | Type | Nullability | Purpose & Use-Case Mapping |
-|---|---|---|---|
-| `StudentNumber` | `string` | Non-nullable | Unique identifier for the student (W2-UC01 to W2-UC05). |
-| `FirstName` | `string` | Non-nullable | Student first name. |
-| `LastName` | `string` | Non-nullable | Student surname. |
-| `FullName` | `string` (computed) | Read-only | Convenience property concatenating first and last name. |
-| `Course` | `string?` | Nullable | Research programme (e.g. *PhD Computing*, *Professional Doctorate*) (W2-UC01). |
-| `ModeOfStudy` | `string?` | Nullable | Study mode: `Full-time` or `Part-time` (W2-UC01). |
-| `StartDate` | `DateTime?` | Nullable | Programme enrolment start date (W2-UC01). |
-| `Status` | `Status` (enum) | Non-nullable | Current academic standing of the student (W2-UC01, W2-UC02, W2-UC03, W2-UC05). |
-| `ThesisTitle` | `string?` | Nullable | Title of the research thesis (W2-UC02, W2-UC04, W2-UC05). |
-| `ExpectedSubmissionDate` | `DateTime?` | Nullable | Current target milestone date for thesis submission (W2-UC02, W2-UC04). |
-| `OriginalExpectedSubmissionDate` | `DateTime?` | Nullable | Original target milestone date at registration (W2-UC02). |
-| `ActualSubmissionDate` | `DateTime?` | Nullable | Recorded date when the thesis was submitted (W2-UC02, W2-UC05). |
-| `HasThesisInformation` | `bool` (computed) | Read-only | Evaluates whether thesis information exists (`ThesisTitle != null || ExpectedSubmissionDate != null || ActualSubmissionDate != null`). |
-
-### Status Enumeration (`Status.cs`)
-The `Status` enum represents the defined institutional states (satisfying **BR12**):
-- `Researching`: Active research phase.
-- `WritingUp`: Active thesis write-up stage.
-- `Submitted`: Thesis submitted, pending examination.
-- `Corrections`: Post-viva corrections in progress.
-- `Completed`: Degree conferred / requirements completed.
-- `Continuation`: Extended study period.
-- `Suspended`: Temporarily suspended studies.
-- `Withdrawn`: Student has formally withdrawn.
-
----
-
-## 3. Use Case Implementations
-
-### Summary Table
-
-| Use Case ID | Name | Actor | Primary Controller Action | View |
-|---|---|---|---|---|
-| **W2-UC01** | View Enrolment Details | Student | `StudentsController.EnrolmentDetails` | `Views/Students/EnrolmentDetails.cshtml` |
-| **W2-UC02** | View Thesis Details | Student | `StudentsController.ThesisDetails` | `Views/Students/ThesisDetails.cshtml` |
-| **W2-UC03** | Update Student Status | College Administrator | `StudentsController.EditStatus` (GET/POST) | `Views/Students/EditStatus.cshtml` |
-| **W2-UC04** | Update Expected Thesis Submission Date | College Administrator | `StudentsController.EditExpectedSubmissionDate` (GET/POST) | `Views/Students/EditExpectedSubmissionDate.cshtml` |
-| **W2-UC05** | Record Actual Thesis Submission | College Administrator | `StudentsController.RecordSubmission` (GET/POST) | `Views/Students/RecordSubmission.cshtml` |
-
----
-
-### W2-UC01: View Enrolment Details
-- **Goal**: Allow students and staff to view academic enrolment details (Student Number, Full Name, Research Programme, Mode of Study, Start Date, and Current Status).
-- **Implementation**:
-  - `StudentsController.EnrolmentDetails(string? studentNumber)` searches the in-memory collection.
-  - **View-Only Guarantee**: Read-only operation; data remains unmodified.
-  - **Alternative Flow (Student Not Found)**: If `studentNumber` is null/whitespace or not found, renders `StudentNotFound.cshtml` with the message *"Student not found"*.
-
----
-
-### W2-UC02: View Thesis Details
-- **Goal**: Allow students and staff to view thesis title, expected submission date, original date, actual submission date, and current status.
-- **Implementation**:
-  - `StudentsController.ThesisDetails(string? studentNumber)` queries the student record.
-  - **View-Only Guarantee**: Read-only operation; data remains unmodified.
-  - **Alternative Flow (Thesis Information Not Available)**: If a student exists (e.g. `S100002`) but has no thesis title or submission dates recorded, the view displays an alert banner *"Thesis information not available"*, along with a call-to-action to set the expected submission date.
-  - **Alternative Flow (Student Not Found)**: Renders `StudentNotFound.cshtml` when no student matches.
-
----
-
-### W2-UC03: Update Student Status
-- **Goal**: Allow College Administrators to change a student's academic status.
-- **Implementation**:
-  - `[HttpGet] EditStatus(string? studentNumber)`: Displays current status and a dropdown containing all valid institutional `Status` enum values.
-  - `[HttpPost] EditStatus(string? studentNumber, Status status)`: Validates that the status is defined (`Enum.IsDefined`), updates `student.Status`, records a flash `TempData["SuccessMessage"]`, and redirects to `EnrolmentDetails`.
-  - **Alternative Flows**:
-    - *Student Not Found*: Returns `StudentNotFound.cshtml`.
-    - *Invalid Status*: Returns the form with validation error.
-
----
-
-### W2-UC04: Update Expected Thesis Submission Date
-- **Goal**: Allow College Administrators to update the target date for thesis submission.
-- **Implementation**:
-  - `[HttpGet] EditExpectedSubmissionDate(string? studentNumber)`: Pre-populates existing expected submission date.
-  - `[HttpPost] EditExpectedSubmissionDate(string? studentNumber, DateTime? expectedSubmissionDate)`: Validates that a date was supplied and that it is not earlier than the student's start date. Updates `student.ExpectedSubmissionDate` and redirects to `ThesisDetails`.
-  - **Alternative Flows**:
-    - *Student Not Found*: Returns `StudentNotFound.cshtml`.
-    - *Invalid / Missing Date*: Adds model error *"Invalid expected submission date"* and re-renders form without modifying data.
-
----
-
-### W2-UC05: Record Actual Thesis Submission
-- **Goal**: Record the actual submission date and automatically update student status to `Submitted`.
-- **Implementation**:
-  - `[HttpGet] RecordSubmission(string? studentNumber)`: Displays existing thesis information and actual submission date input.
-  - `[HttpPost] RecordSubmission(string? studentNumber, DateTime? actualSubmissionDate)`:
-    - Validates date presence and validity.
-    - **Atomic Business Transaction**: If valid, updates *both* `student.ActualSubmissionDate = actualSubmissionDate.Value` and `student.Status = Status.Submitted`.
-    - If invalid or missing, neither value is changed (no partial update).
-    - Redirects to `ThesisDetails` displaying the updated submission information.
-  - **Alternative Flows**:
-    - *Invalid Submission Date*: Displays *"Invalid submission date"* validation message without changing status or date.
-    - *Student Not Found*: Returns `StudentNotFound.cshtml`.
-
----
-
-## 4. Extended Alternative Flows Analysis
-
-As part of the analysis and defensive implementation, the following additional alternative flows were identified and handled:
-
-1. **W2-UC01 / W2-UC02 / W2-UC03 / W2-UC04 / W2-UC05: Empty or Whitespace Student Number**
-   - *Condition*: User requests action with an empty or whitespace student number parameter.
-   - *Response*: Handled cleanly by rendering `StudentNotFound.cshtml` without triggering null reference exceptions.
-
-2. **W2-UC04: Expected Submission Date Before Start Date**
-   - *Condition*: Administrator enters an expected submission date prior to the student's start date.
-   - *Response*: Validation rejects the date, adds model error, and prevents update.
-
-3. **W2-UC05: Actual Submission Date Before Start Date**
-   - *Condition*: Administrator enters a submission date prior to enrolment start date.
-   - *Response*: Form validation rejects the submission date and preserves existing status.
-
----
-
-## 5. Automated Test Suite (`PgrStudentManagement.Tests`)
-
-An automated test suite using xUnit and Moq verifies all success and failure flows:
-
-| Test Name | Use Case | Focus |
-|---|---|---|
-| `W2_UC01_EnrolmentDetails_ReturnsViewWithStudent_WhenStudentExists` | W2-UC01 | Main success scenario |
-| `W2_UC01_EnrolmentDetails_ReturnsStudentNotFound_WhenStudentDoesNotExist` | W2-UC01 | Alternative flow: Student Not Found |
-| `W2_UC01_EnrolmentDetails_ReturnsStudentNotFound_WhenStudentNumberIsEmpty` | W2-UC01 | Alternative flow: Empty ID |
-| `W2_UC01_EnrolmentDetails_DoesNotModifyStudentData` | W2-UC01 | View-only idempotence |
-| `W2_UC02_ThesisDetails_ReturnsViewWithStudent_WhenThesisInfoExists` | W2-UC02 | Main success scenario |
-| `W2_UC02_ThesisDetails_RecognisesMissingThesisInfo_ForStudentWithoutThesis` | W2-UC02 | Alternative flow: Thesis Information Not Available |
-| `W2_UC02_ThesisDetails_ReturnsStudentNotFound_WhenStudentDoesNotExist` | W2-UC02 | Alternative flow: Student Not Found |
-| `W2_UC02_ThesisDetails_DoesNotModifyStudentData` | W2-UC02 | View-only idempotence |
-| `W2_UC03_EditStatus_Get_ReturnsStudent_WhenFound` | W2-UC03 | GET action model binding |
-| `W2_UC03_EditStatus_Post_UpdatesStatusAndRedirects_WhenValid` | W2-UC03 | Main success scenario |
-| `W2_UC03_EditStatus_Post_ReturnsStudentNotFound_WhenStudentDoesNotExist` | W2-UC03 | Alternative flow: Student Not Found |
-| `W2_UC04_EditExpectedSubmissionDate_Get_ReturnsStudent_WhenFound` | W2-UC04 | GET action model binding |
-| `W2_UC04_EditExpectedSubmissionDate_Post_UpdatesDateAndRedirects_WhenValid` | W2-UC04 | Main success scenario |
-| `W2_UC04_EditExpectedSubmissionDate_Post_DoesNotUpdate_WhenDateIsNull` | W2-UC04 | Alternative flow: Missing date preserves existing data |
-| `W2_UC04_EditExpectedSubmissionDate_Post_ReturnsStudentNotFound_WhenStudentDoesNotExist` | W2-UC04 | Alternative flow: Student Not Found |
-| `W2_UC05_RecordSubmission_Get_ReturnsStudent_WhenFound` | W2-UC05 | GET action model binding |
-| `W2_UC05_RecordSubmission_Post_AtomicallyUpdatesSubmissionDateAndStatus` | W2-UC05 | Atomic update: actual date + `Submitted` status |
-| `W2_UC05_RecordSubmission_Post_DoesNotUpdateStatusOrSubmissionDate_WhenDateIsNull` | W2-UC05 | Alternative flow: Invalid submission date (no partial update) |
-| `W2_UC05_RecordSubmission_Post_ReturnsStudentNotFound_WhenStudentDoesNotExist` | W2-UC05 | Alternative flow: Student Not Found |
-
----
-
-## 6. How to Run the Application & Tests
-
-### Build Solution
-```bash
-dotnet build
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Presentation Layer                    │
+│   StudentsController  │  HomeController  │  Razor Views │
+└────────────────────────────┬────────────────────────────┘
+                             │ (Calls business operations)
+                             ▼
+┌─────────────────────────────────────────────────────────┐
+│                     Business Layer                      │
+│      StudentService   │  ServiceResult<T>  │  Rules     │
+└────────────────────────────┬────────────────────────────┘
+                             │ (Calls data persistence)
+                             ▼
+┌─────────────────────────────────────────────────────────┐
+│                       Data Layer                        │
+│          StudentStorage (Singleton In-Memory)           │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### Run Tests
+---
 
-From the `PgrStudentManagement.Tests` folder run:
+## 2. Layer Responsibilities & Design Patterns
+
+### 2.1 Presentation Layer (`PgrStudentManagement.Web/Controllers` & `Views`)
+- **Components**: `StudentsController`, `HomeController`, Razor Views (`Views/Students/*`, `Views/Shared/*`).
+- **Responsibilities**:
+  - Receive HTTP requests and extract routing parameters and form payloads.
+  - Delegate all business logic and validation to `StudentService`.
+  - Interpret `ServiceResult` outcomes returned by the business layer.
+  - Select appropriate Razor views, redirects, view models, and user flash messages (`TempData`).
+- **Constraints**:
+  - The controller contains **no direct references** to `StudentStorage` or in-memory lists.
+  - No domain business rules (e.g. date validations, atomic status changes) are performed inside the controller.
+
+### 2.2 Business Layer (`PgrStudentManagement.Web/Services`)
+- **Components**: `StudentService`, `ServiceResult`, `ServiceResult<T>`.
+- **Responsibilities**:
+  - Coordinate student management business operations.
+  - Enforce domain rules (e.g. duplicate student ID checks, start date vs submission date validation).
+  - Apply data transformations, business ordering (e.g. sort by StudentNumber, Name, Programme, Status), and multi-field search logic.
+  - Perform cohort analytics and statistics calculations (W3-UC05).
+  - Coordinate atomic domain transactions (e.g. setting actual submission date and updating status to `Submitted` together).
+- **Constraints**:
+  - The service is decoupled from ASP.NET Core MVC controllers, `IActionResult`, and HTTP context.
+  - Receives `StudentStorage` via constructor dependency injection.
+
+### 2.3 Data Layer (`PgrStudentManagement.Web/Data`)
+- **Components**: `StudentStorage`.
+- **Responsibilities**:
+  - Own and encapsulate the in-memory `List<Student>` as a `private readonly` instance field.
+  - Provide CRUD operations: `GetStudents()`, `GetStudent(id)`, `AddStudent(student)`, `UpdateStudent(student)`, `Exists(id)`.
+  - Initialise and reset seed student records (`S100001` - John Doe, `S100002` - Jane Smith).
+- **Constraints**:
+  - Storage is registered as a **Singleton** in `Program.cs`, guaranteeing one consistent dataset during the application process lifecycle.
+  - Does not contain HTTP or presentation dependencies.
+
+---
+
+## 3. Dependency Injection Configuration (`Program.cs`)
+
+```csharp
+// Program.cs
+builder.Services.AddSingleton<StudentStorage>(); // Data layer: single in-memory store
+builder.Services.AddScoped<StudentService>();    // Business layer: created per request
+```
+
+- **`StudentStorage` (Singleton)**: Maintains the in-memory collection across all web requests during application execution.
+- **`StudentService` (Scoped)**: Instantiated per HTTP request, receiving the singleton `StudentStorage` via constructor injection.
+- **`StudentsController`**: Receives `StudentService` via constructor injection.
+
+---
+
+## 4. Comprehensive UML Diagrams
+
+### 4.1 Package / Layer Architecture Diagram
+
+```mermaid
+graph TD
+    subgraph PresentationLayer["Presentation Layer (Web)"]
+        SC["StudentsController"]
+        V["Razor Views (Index, Details, Create, Search, Stats)"]
+        SC --> V
+    end
+
+    subgraph BusinessLayer["Business Layer (Services)"]
+        SS["StudentService"]
+        SR["ServiceResult / ServiceResult&lt;T&gt;"]
+        VM["ViewModels (StudentStatisticsViewModel, StudentSearchViewModel)"]
+        SS -.-> SR
+        SS -.-> VM
+    end
+
+    subgraph DataLayer["Data Layer (Data)"]
+        ST["StudentStorage"]
+        DM["Domain Models (Student, Status)"]
+        ST -.-> DM
+    end
+
+    SC -->|Constructor Injection| SS
+    SS -->|Constructor Injection| ST
+```
+
+### 4.2 Class Diagram
+
+```mermaid
+classDiagram
+    class StudentsController {
+        -StudentService _studentService
+        +StudentsController(StudentService studentService)
+        +Index(string sortBy) IActionResult
+        +Details(string studentNumber) IActionResult
+        +Create() IActionResult
+        +Create(Student student) IActionResult
+        +Search(string searchTerm, Status? statusFilter, string modeFilter, string programmeFilter) IActionResult
+        +Statistics() IActionResult
+        +EnrolmentDetails(string studentNumber) IActionResult
+        +ThesisDetails(string studentNumber) IActionResult
+        +EditStatus(string studentNumber) IActionResult
+        +EditStatus(string studentNumber, Status status) IActionResult
+        +EditExpectedSubmissionDate(string studentNumber) IActionResult
+        +EditExpectedSubmissionDate(string studentNumber, DateTime? expectedSubmissionDate) IActionResult
+        +RecordSubmission(string studentNumber) IActionResult
+        +RecordSubmission(string studentNumber, DateTime? actualSubmissionDate) IActionResult
+    }
+
+    class StudentService {
+        -StudentStorage _studentStorage
+        +StudentService(StudentStorage studentStorage)
+        +GetStudents(string sortBy) IReadOnlyList~Student~
+        +GetStudent(string studentNumber) Student?
+        +StudentExists(string studentNumber) bool
+        +CreateStudent(Student student) ServiceResult~Student~
+        +UpdateStatus(string studentNumber, Status status) ServiceResult
+        +UpdateExpectedSubmissionDate(string studentNumber, DateTime? expectedSubmissionDate) ServiceResult
+        +RecordSubmission(string studentNumber, DateTime? actualSubmissionDate) ServiceResult
+        +SearchStudents(string searchTerm, Status? statusFilter, string modeFilter, string programmeFilter) IReadOnlyList~Student~
+        +GetStatistics() StudentStatisticsViewModel
+    }
+
+    class StudentStorage {
+        -List~Student~ _students
+        +StudentStorage()
+        +GetStudents() IReadOnlyList~Student~
+        +GetStudent(string studentNumber) Student?
+        +Exists(string studentNumber) bool
+        +AddStudent(Student student) void
+        +UpdateStudent(Student student) void
+        +ResetDefaultStudents() void
+        +Clear() void
+    }
+
+    class Student {
+        +string StudentNumber
+        +string FirstName
+        +string LastName
+        +string FullName
+        +string? Course
+        +string? ModeOfStudy
+        +DateTime? StartDate
+        +Status Status
+        +string? ThesisTitle
+        +DateTime? ExpectedSubmissionDate
+        +DateTime? OriginalExpectedSubmissionDate
+        +DateTime? ActualSubmissionDate
+        +bool HasThesisInformation
+    }
+
+    class Status {
+        <<enumeration>>
+        Researching
+        WritingUp
+        Submitted
+        Corrections
+        Completed
+        Continuation
+        Suspended
+        Withdrawn
+    }
+
+    class ServiceResult {
+        +bool Success
+        +string? ErrorMessage
+        +string? ErrorCode
+        +Ok() ServiceResult
+        +Fail(string errorMessage, string errorCode) ServiceResult
+    }
+
+    class StudentStatisticsViewModel {
+        +int TotalStudents
+        +Dictionary~Status, int~ StatusDistribution
+        +Dictionary~string, int~ ModeOfStudyDistribution
+        +Dictionary~string, int~ ProgrammeDistribution
+        +int SubmissionsCount
+        +int WritingUpCount
+        +int ResearchingCount
+        +int WithThesisInfoCount
+        +double SubmissionRatePercentage
+        +bool HasData
+    }
+
+    StudentsController --> StudentService : invokes
+    StudentService --> StudentStorage : invokes
+    StudentService --> ServiceResult : returns
+    StudentService --> StudentStatisticsViewModel : creates
+    StudentStorage --> Student : owns
+    Student --> Status : has
+```
+
+### 4.3 Sequence Diagram 1: W3-UC01 Create Student (with Duplicate Check)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Administrator / User
+    participant Browser
+    participant Controller as StudentsController
+    participant Service as StudentService
+    participant Storage as StudentStorage
+    participant Views as Razor Views
+
+    User->>Browser: Submit Create Student Form (StudentNumber, Name, Course, Dates)
+    Browser->>Controller: POST /Students/Create (student)
+    Controller->>Service: CreateStudent(student)
+    Service->>Storage: Exists(student.StudentNumber)
+    Storage-->>Service: false (not duplicate)
+    Note over Service: Validate mandatory fields & dates
+    Service->>Storage: AddStudent(student)
+    Storage-->>Service: void
+    Service-->>Controller: ServiceResult.Ok(student)
+    Controller-->>Browser: RedirectToAction("Details", { studentNumber: "S100003" })
+    Browser->>Controller: GET /Students/Details?studentNumber=S100003
+    Controller->>Service: GetStudent("S100003")
+    Service->>Storage: GetStudent("S100003")
+    Storage-->>Service: Student object
+    Service-->>Controller: Student object
+    Controller->>Views: Render Details.cshtml(student)
+    Views-->>Browser: HTML Page with student profile & success alert
+```
+
+### 4.4 Sequence Diagram 2: W2-UC05 Record Actual Thesis Submission (Atomic Update)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as College Administrator
+    participant Browser
+    participant Controller as StudentsController
+    participant Service as StudentService
+    participant Storage as StudentStorage
+    participant Views as Razor Views
+
+    Admin->>Browser: Submit actual submission date (e.g. 2028-09-15)
+    Browser->>Controller: POST /Students/RecordSubmission (studentNumber, actualSubmissionDate)
+    Controller->>Service: RecordSubmission("S100001", 2028-09-15)
+    Service->>Storage: GetStudent("S100001")
+    Storage-->>Service: Student record
+    Note over Service: Validate date >= StartDate
+    Note over Service: Atomically set ActualSubmissionDate AND Status = Submitted
+    Service->>Storage: UpdateStudent(student)
+    Storage-->>Service: void
+    Service-->>Controller: ServiceResult.Ok()
+    Controller-->>Browser: RedirectToAction("ThesisDetails", { studentNumber: "S100001" })
+    Browser->>Controller: GET /Students/ThesisDetails?studentNumber=S100001
+    Controller->>Service: GetStudent("S100001")
+    Service->>Storage: GetStudent("S100001")
+    Storage-->>Service: Updated Student
+    Service-->>Controller: Updated Student
+    Controller->>Views: Render ThesisDetails.cshtml(student)
+    Views-->>Browser: Updated thesis card showing Submitted badge & date
+```
+
+### 4.5 Sequence Diagram 3: W3-UC05 View Student Statistics
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Staff as Academic Staff
+    participant Browser
+    participant Controller as StudentsController
+    participant Service as StudentService
+    participant Storage as StudentStorage
+    participant Views as Razor Views
+
+    Staff->>Browser: Click "Statistics" link
+    Browser->>Controller: GET /Students/Statistics
+    Controller->>Service: GetStatistics()
+    Service->>Storage: GetStudents()
+    Storage-->>Service: IReadOnlyList<Student>
+    Note over Service: Aggregate totals, status breakdown, mode breakdown, submission rate
+    Service-->>Controller: StudentStatisticsViewModel
+    alt Cohort has data
+        Controller->>Views: Render Statistics.cshtml(model)
+        Views-->>Browser: HTML dashboard with summary cards & tables
+    else Cohort is empty
+        Controller->>Views: Render Statistics.cshtml(emptyModel)
+        Views-->>Browser: HTML page with "No student data available" banner
+    end
+```
+
+---
+
+## 5. Implemented Use Cases Catalog
+
+| Use Case ID | Name | Actor | Layer Flow | View | Key Business Rules & Alternative Flows |
+|---|---|---|---|---|---|
+| **W2-UC01** | View Enrolment Details | Student / Staff | `Controller` &rarr; `Service` &rarr; `Storage` | `EnrolmentDetails.cshtml` | View-only; *Alt Flow*: Student Not Found renders `StudentNotFound.cshtml`. |
+| **W2-UC02** | View Thesis Details | Student / Staff | `Controller` &rarr; `Service` &rarr; `Storage` | `ThesisDetails.cshtml` | View-only; *Alt Flow*: Missing thesis details displays informational banner. |
+| **W2-UC03** | Update Student Status | College Administrator | `Controller` &rarr; `Service` &rarr; `Storage` | `EditStatus.cshtml` | Enforces valid `Status` enum; redirects to `EnrolmentDetails` upon success. |
+| **W2-UC04** | Update Expected Submission Date | College Administrator | `Controller` &rarr; `Service` &rarr; `Storage` | `EditExpectedSubmissionDate.cshtml` | Validates date &ge; `StartDate`; updates target date. |
+| **W2-UC05** | Record Actual Thesis Submission | College Administrator | `Controller` &rarr; `Service` &rarr; `Storage` | `RecordSubmission.cshtml` | **Atomic update**: sets `ActualSubmissionDate` and transitions status to `Submitted`. |
+| **W3-UC01** | Create Student | College Administrator | `Controller` &rarr; `Service` &rarr; `Storage` | `Create.cshtml` | Mandatory validation (`StudentNumber`, `FirstName`, `LastName`); *Alt Flow*: Duplicate Student Number validation. |
+| **W3-UC02** | List Students | All Users | `Controller` &rarr; `Service` &rarr; `Storage` | `Index.cshtml` | Default ordering by student number; sort links; *Alt Flow*: "No students found" empty state. |
+| **W3-UC03** | View Student Details | All Users | `Controller` &rarr; `Service` &rarr; `Storage` | `Details.cshtml` | Combined Enrolment + Thesis profile; quick action links; *Alt Flow*: Student Not Found. |
+| **W3-UC04** | Search Students | All Users | `Controller` &rarr; `Service` &rarr; `Storage` | `Search.cshtml` | Case-insensitive multi-field search (ID, name, programme, thesis) + Status/Mode filters; *Alt Flow*: "No matching students found". |
+| **W3-UC05** | View Student Statistics | Academic Staff | `Controller` &rarr; `Service` &rarr; `Storage` | `Statistics.cshtml` | Aggregates cohort count, submission rate, status and mode distributions; *Alt Flow*: "No student data available". |
+
+---
+
+## 6. Answers to Reflection Questions
+
+1. **Which responsibilities moved out of `StudentController`?**
+   - Data collection ownership, direct collection mutation, in-memory list filtering, business validation rules (e.g. date vs start date checks, duplicate ID detection), and statistical aggregations moved out of the controller into `StudentService` and `StudentStorage`.
+
+2. **Which responsibilities belong to `StudentService`?**
+   - Business rule validation, input normalization, uniqueness validation, domain calculations, ordering/sorting algorithms, multi-criteria filtering, aggregation/analytics generation, and coordinating domain transactions across storage.
+
+3. **Why does `StudentStorage` own the in-memory collection?**
+   - To adhere to the Single Responsibility Principle. Persistence concerns (storing, retrieving, and updating entity records) should be isolated from presentation and business logic, providing a clean boundary for future migration to EF Core or SQL databases.
+
+4. **Why is the collection an instance field rather than a static field?**
+   - An instance field inside a Singleton service enables proper dependency injection, lifecycle management, testability, and isolation. It prevents global state leakage and allows mock/stub implementations or multiple storage instances during unit testing.
+
+5. **What would happen if the controller and service maintained separate lists?**
+   - State synchronization would fail. Mutations performed via service operations would not be reflected in the controller's list, leading to data inconsistency, phantom records, and stale views.
+
+6. **How does constructor injection make dependencies visible?**
+   - Dependencies are explicitly declared in constructor parameters. Any consumer or test runner can immediately identify what dependencies a class requires to function, preventing hidden dependencies and enabling mock substitution without reflection.
+
+7. **Which layer orders the student list?**
+   - The **Business Layer (`StudentService`)**. Ordering is a business concern (e.g. sorting students alphabetically or by enrolment date).
+
+8. **Which layer determines whether a student number already exists?**
+   - The **Business Layer (`StudentService`)** coordinates the decision by querying the data layer (`_studentStorage.Exists()`) and returning appropriate business failure results.
+
+9. **Which layer selects the Razor view?**
+   - The **Presentation Layer (`StudentsController`)**. Selecting views, status codes, view models, and HTTP redirects is purely a presentation responsibility.
+
+10. **Which changes were structural rather than functional?**
+    - The extraction of `StudentStorage` and `StudentService`, moving `List<Student>` from a static controller field to a singleton storage instance, and injecting services via ASP.NET Core DI were purely structural refactorings that preserved existing functionality while improving cohesion, coupling, and testability.
+
+---
+
+## 7. Automated Test Suite (`PgrStudentManagement.Tests`)
+
+The test suite contains **42 automated xUnit tests** covering all three layers:
+
+- **`StudentStorageTests`**: Tests data layer persistence, lookups, isolation, and reset behavior.
+- **`StudentServiceTests`**: Tests business rules, validations, duplicate detection, atomic transitions, search logic, and statistics computations.
+- **`StudentsControllerTests`**: Tests presentation action results, view model binding, redirect destinations, TempData flash messages, and error handling.
+
+### Running the Tests
+
+To run the complete automated test suite:
 
 ```bash
 dotnet test
 ```
 
-For more details on tests use:
+To run with detailed step-by-step diagnostic output:
+
 ```bash
 dotnet test --logger "console;verbosity=detailed"
 ```
 
-### Run Web Application
+---
+
+## 8. How to Run the Application
+
+From the repository root:
+
 ```bash
 dotnet run --project PgrStudentManagement.Web
 ```
-Once running, navigate to `https://localhost:<port>/Students` to interact with the student management system.
+
+Open your browser and navigate to:
+- **Student Directory**: `https://localhost:<port>/Students`
+- **Create Student (W3-UC01)**: `https://localhost:<port>/Students/Create`
+- **Search Students (W3-UC04)**: `https://localhost:<port>/Students/Search`
+- **Cohort Statistics (W3-UC05)**: `https://localhost:<port>/Students/Statistics`

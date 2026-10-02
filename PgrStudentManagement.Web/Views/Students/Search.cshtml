@@ -1,0 +1,133 @@
+@model PgrStudentManagement.Web.Models.StudentSearchViewModel
+
+@{
+    ViewData["Title"] = "Search Students";
+}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 mb-1">Search PGR Students</h1>
+            <p class="text-muted mb-0">W3-UC04: Find students by keyword, student number, name, programme, or status.</p>
+        </div>
+        <div>
+            <a asp-action="Create" class="btn btn-primary">
+                + Create New Student
+            </a>
+            <a asp-action="Index" class="btn btn-outline-secondary">
+                View All
+            </a>
+        </div>
+    </div>
+
+    <!-- Search / Filter Card -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body p-4 bg-light rounded">
+            <form asp-action="Search" method="get">
+                <div class="row g-3">
+                    <div class="col-md-5">
+                        <label for="searchTerm" class="form-label fw-semibold">Search Keywords</label>
+                        <input type="text"
+                               id="searchTerm"
+                               name="searchTerm"
+                               value="@Model.SearchTerm"
+                               class="form-control"
+                               placeholder="Search by ID, name, course, thesis..." />
+                    </div>
+                    <div class="col-md-3">
+                        <label for="statusFilter" class="form-label fw-semibold">Filter by Status</label>
+                        <select id="statusFilter" name="statusFilter" class="form-select">
+                            <option value="">-- All Statuses --</option>
+                            @foreach (var status in Enum.GetValues<PgrStudentManagement.Web.Models.Status>())
+                            {
+                                <option value="@status" selected="@(Model.StatusFilter == status)">@status</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="modeFilter" class="form-label fw-semibold">Mode</label>
+                        <select id="modeFilter" name="modeFilter" class="form-select">
+                            <option value="">-- All --</option>
+                            <option value="Full-time" selected="@(Model.ModeFilter == "Full-time")">Full-time</option>
+                            <option value="Part-time" selected="@(Model.ModeFilter == "Part-time")">Part-time</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end gap-2">
+                        <button type="submit" class="btn btn-primary w-100">Search</button>
+                        <a asp-action="Search" class="btn btn-outline-secondary">Reset</a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    @if (Model.HasSearched)
+    {
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    Search Results: <span class="badge bg-primary">@Model.TotalResults match@(Model.TotalResults == 1 ? "" : "es")</span>
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                @if (Model.TotalResults == 0)
+                {
+                    <div class="alert alert-warning m-4" role="alert">
+                        <h5 class="alert-heading">No matching students found</h5>
+                        <p class="mb-0">There are no postgraduate students matching the search criteria "<strong>@(Model.SearchTerm ?? "Filter")</strong>". Please adjust your search terms or filters.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-3">Student Number</th>
+                                    <th>Full Name</th>
+                                    <th>Programme</th>
+                                    <th>Mode</th>
+                                    <th>Status</th>
+                                    <th class="text-end pe-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var student in Model.Results)
+                                {
+                                    <tr>
+                                        <td class="ps-3 fw-semibold">@student.StudentNumber</td>
+                                        <td>@student.FullName</td>
+                                        <td>@(student.Course ?? "N/A")</td>
+                                        <td>@(student.ModeOfStudy ?? "N/A")</td>
+                                        <td>
+                                            <span class="badge @(student.Status switch {
+                                                PgrStudentManagement.Web.Models.Status.Researching => "bg-primary",
+                                                PgrStudentManagement.Web.Models.Status.WritingUp => "bg-info text-dark",
+                                                PgrStudentManagement.Web.Models.Status.Submitted => "bg-success",
+                                                PgrStudentManagement.Web.Models.Status.Corrections => "bg-warning text-dark",
+                                                PgrStudentManagement.Web.Models.Status.Completed => "bg-dark",
+                                                PgrStudentManagement.Web.Models.Status.Suspended => "bg-secondary",
+                                                PgrStudentManagement.Web.Models.Status.Withdrawn => "bg-danger",
+                                                _ => "bg-light text-dark"
+                                            })">
+                                                @student.Status
+                                            </span>
+                                        </td>
+                                        <td class="text-end pe-3">
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <a asp-action="Details" asp-route-studentNumber="@student.StudentNumber" class="btn btn-outline-dark">Details</a>
+                                                <a asp-action="EnrolmentDetails" asp-route-studentNumber="@student.StudentNumber" class="btn btn-outline-primary">Enrolment</a>
+                                                <a asp-action="ThesisDetails" asp-route-studentNumber="@student.StudentNumber" class="btn btn-outline-secondary">Thesis</a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>

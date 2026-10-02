@@ -8,7 +8,18 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h1 class="h2 mb-1">Postgraduate Research Students</h1>
-            <p class="text-muted mb-0">Manage student enrolments, academic statuses, and thesis milestones.</p>
+            <p class="text-muted mb-0">Manage student enrolments, academic statuses, and thesis milestones (Layered Architecture).</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a asp-action="Create" class="btn btn-primary">
+                + Create Student
+            </a>
+            <a asp-action="Search" class="btn btn-outline-dark">
+                Search
+            </a>
+            <a asp-action="Statistics" class="btn btn-outline-info">
+                Statistics
+            </a>
         </div>
     </div>
 
@@ -20,79 +31,112 @@
         </div>
     }
 
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th class="ps-3">Student Number</th>
-                            <th>Full Name</th>
-                            <th>Programme</th>
-                            <th>Status</th>
-                            <th class="text-end pe-3">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var student in Model)
-                        {
+    @if (!Model.Any())
+    {
+        <div class="alert alert-warning py-4 text-center" role="alert">
+            <h4 class="alert-heading">No students found</h4>
+            <p class="mb-3">There are currently no student records available in the system.</p>
+            <a asp-action="Create" class="btn btn-primary">Create the first student</a>
+        </div>
+    }
+    else
+    {
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <span class="text-muted small">
+                    Sort by:
+                    <a asp-action="Index" asp-route-sortBy="number" class="text-decoration-none ms-1">Student #</a> |
+                    <a asp-action="Index" asp-route-sortBy="name" class="text-decoration-none ms-1">Name</a> |
+                    <a asp-action="Index" asp-route-sortBy="programme" class="text-decoration-none ms-1">Programme</a> |
+                    <a asp-action="Index" asp-route-sortBy="status" class="text-decoration-none ms-1">Status</a>
+                </span>
+                <span class="badge bg-light text-dark">Total: @Model.Count()</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
                             <tr>
-                                <td class="ps-3 fw-semibold">@student.StudentNumber</td>
-                                <td>@student.FullName</td>
-                                <td>@(student.Course ?? "N/A")</td>
-                                <td>
-                                    <span class="badge @(student.Status switch {
-                                        PgrStudentManagement.Web.Models.Status.Researching => "bg-primary",
-                                        PgrStudentManagement.Web.Models.Status.WritingUp => "bg-info text-dark",
-                                        PgrStudentManagement.Web.Models.Status.Submitted => "bg-success",
-                                        PgrStudentManagement.Web.Models.Status.Corrections => "bg-warning text-dark",
-                                        PgrStudentManagement.Web.Models.Status.Completed => "bg-dark",
-                                        PgrStudentManagement.Web.Models.Status.Suspended => "bg-secondary",
-                                        PgrStudentManagement.Web.Models.Status.Withdrawn => "bg-danger",
-                                        _ => "bg-light text-dark"
-                                    })">
-                                        @student.Status
-                                    </span>
-                                </td>
-                                <td class="text-end pe-3">
-                                    <div class="btn-group btn-group-sm" role="group">
-                                        <a asp-action="EnrolmentDetails"
-                                           asp-route-studentNumber="@student.StudentNumber"
-                                           class="btn btn-outline-primary"
-                                           title="View Enrolment Details (W2-UC01)">
-                                            Enrolment
-                                        </a>
-                                        <a asp-action="ThesisDetails"
-                                           asp-route-studentNumber="@student.StudentNumber"
-                                           class="btn btn-outline-secondary"
-                                           title="View Thesis Details (W2-UC02)">
-                                            Thesis
-                                        </a>
-                                        <a asp-action="EditStatus"
-                                           asp-route-studentNumber="@student.StudentNumber"
-                                           class="btn btn-outline-info"
-                                           title="Edit Student Status (W2-UC03)">
-                                            Status
-                                        </a>
-                                        <a asp-action="EditExpectedSubmissionDate"
-                                           asp-route-studentNumber="@student.StudentNumber"
-                                           class="btn btn-outline-warning"
-                                           title="Edit Expected Date (W2-UC04)">
-                                            Expected Date
-                                        </a>
-                                        <a asp-action="RecordSubmission"
-                                           asp-route-studentNumber="@student.StudentNumber"
-                                           class="btn btn-outline-success"
-                                           title="Record Thesis Submission (W2-UC05)">
-                                            Record Submission
-                                        </a>
-                                    </div>
-                                </td>
+                                <th class="ps-3">Student Number</th>
+                                <th>Full Name</th>
+                                <th>Programme</th>
+                                <th>Mode</th>
+                                <th>Status</th>
+                                <th class="text-end pe-3">Actions</th>
                             </tr>
-                        }
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            @foreach (var student in Model)
+                            {
+                                <tr>
+                                    <td class="ps-3 fw-semibold">
+                                        <a asp-action="Details" asp-route-studentNumber="@student.StudentNumber" class="text-decoration-none">
+                                            @student.StudentNumber
+                                        </a>
+                                    </td>
+                                    <td>@student.FullName</td>
+                                    <td>@(student.Course ?? "N/A")</td>
+                                    <td>@(student.ModeOfStudy ?? "N/A")</td>
+                                    <td>
+                                        <span class="badge @(student.Status switch {
+                                            PgrStudentManagement.Web.Models.Status.Researching => "bg-primary",
+                                            PgrStudentManagement.Web.Models.Status.WritingUp => "bg-info text-dark",
+                                            PgrStudentManagement.Web.Models.Status.Submitted => "bg-success",
+                                            PgrStudentManagement.Web.Models.Status.Corrections => "bg-warning text-dark",
+                                            PgrStudentManagement.Web.Models.Status.Completed => "bg-dark",
+                                            PgrStudentManagement.Web.Models.Status.Suspended => "bg-secondary",
+                                            PgrStudentManagement.Web.Models.Status.Withdrawn => "bg-danger",
+                                            _ => "bg-light text-dark"
+                                        })">
+                                            @student.Status
+                                        </span>
+                                    </td>
+                                    <td class="text-end pe-3">
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <a asp-action="Details"
+                                               asp-route-studentNumber="@student.StudentNumber"
+                                               class="btn btn-outline-dark"
+                                               title="View Full Profile (W3-UC03)">
+                                                Details
+                                            </a>
+                                            <a asp-action="EnrolmentDetails"
+                                               asp-route-studentNumber="@student.StudentNumber"
+                                               class="btn btn-outline-primary"
+                                               title="View Enrolment Details (W2-UC01)">
+                                                Enrolment
+                                            </a>
+                                            <a asp-action="ThesisDetails"
+                                               asp-route-studentNumber="@student.StudentNumber"
+                                               class="btn btn-outline-secondary"
+                                               title="View Thesis Details (W2-UC02)">
+                                                Thesis
+                                            </a>
+                                            <a asp-action="EditStatus"
+                                               asp-route-studentNumber="@student.StudentNumber"
+                                               class="btn btn-outline-info"
+                                               title="Edit Student Status (W2-UC03)">
+                                                Status
+                                            </a>
+                                            <a asp-action="EditExpectedSubmissionDate"
+                                               asp-route-studentNumber="@student.StudentNumber"
+                                               class="btn btn-outline-warning"
+                                               title="Edit Expected Date (W2-UC04)">
+                                                Expected Date
+                                            </a>
+                                            <a asp-action="RecordSubmission"
+                                               asp-route-studentNumber="@student.StudentNumber"
+                                               class="btn btn-outline-success"
+                                               title="Record Thesis Submission (W2-UC05)">
+                                                Record Submission
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
-    </div>
+    }
 </div>
